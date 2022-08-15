@@ -34,45 +34,14 @@ public slots:
     void btnDeleteClicked();
     void btnBSClicked();  
 
-    void btnModClicked();
     void btnPlusClicked();
     void btnMinusClicked();
-    void btnMultClicked();
-    void btnDivClicked();
     void btnCAClicked();
     void btnAverageClicked();
-    void btnNegateClicked();
-    void btnSqrtClicked();
-    void btnSquareClicked();
-    void btnQuadClicked();
-
-    void btnPowClicked();
-    void btnCubedClicked();
-    void btnTenPowClicked();
-    void btnFactClicked();
-
-    void btnCubeRootClicked();
-    void btnRootPowClicked();
-    void btnPiClicked();
-
-    void btnLog10Clicked();
-    void btnLog2Clicked();
-    void btn2PowClicked();
-
-    void btnCAreaClicked();
-    void btnCircClicked();
-    void btnRAreaClicked();
-    void btnPeriClicked();
-    void btnRatioClicked();
-    void btnVolCylClicked();
-    void btnVolCubeClicked();
-
 private:
-    void errorNumVals( int numValues ) const;
-    void errorInvalidValue( const QString & numValues ) const;
     double getLastValue( bool popLast );
     void addValue( char value );
-    void setLastValue( double value );
+    void addLastValue( double value );
 
     Ui::CCalculator *ui;
     QStringListModel * fModel;

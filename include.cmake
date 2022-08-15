@@ -13,7 +13,6 @@ set(qtproject_UIS
 
 
 set(qtproject_QRC
-    application.qrc
 )
 
 file(GLOB qtproject_QRC_SOURCES "resources/*")
