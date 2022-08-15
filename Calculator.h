@@ -1,10 +1,37 @@
+// The MIT License( MIT )
+//
+// Copyright( c ) 2020 Scott Aron Bloom
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this softwareand associated documentation files( the "Software" ), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and /or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions :
+//
+// The above copyright noticeand this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #ifndef _CALCULATOR_H
 #define _CALCULATOR_H
 
 #include <QDialog>
+#include <memory>
+#include <unordered_map>
+#include <functional>
+#include <list>
 namespace Ui {class CCalculator;};
 
 class QStringListModel;
+class QAbstractButton;
 
 class CCalculator : public QDialog
 {
@@ -19,63 +46,54 @@ public:
     bool eventFilter(QObject *obj, QEvent *event);
     
 public slots:
-    void btn0Clicked();
-    void btn1Clicked();
-    void btn2Clicked();
-    void btn3Clicked();
-    void btn4Clicked();
-    void btn5Clicked();
-    void btn6Clicked();
-    void btn7Clicked();
-    void btn8Clicked();
-    void btn9Clicked();
-    void btnPeriodClicked();
+    void binaryOperatorClicked( char op );
+
     void btnEnterClicked();
-    void btnDeleteClicked();
-    void btnBSClicked();  
 
-    void btnModClicked();
-    void btnPlusClicked();
-    void btnMinusClicked();
-    void btnMultClicked();
-    void btnDivClicked();
-    void btnCAClicked();
+    void btnCClicked();
+    void btnDelClicked();
+    void btnBSClicked();
+
     void btnAverageClicked();
-    void btnNegateClicked();
-    void btnSqrtClicked();
-    void btnSquareClicked();
-    void btnQuadClicked();
+    void btnNarcissisticClicked();
+    void btnFactorsClicked( bool incNum );
 
-    void btnPowClicked();
-    void btnCubedClicked();
-    void btnTenPowClicked();
-    void btnFactClicked();
+    void reportPrime( std::list<int64_t>& factors, int64_t curr, bool incNum, int numShowsPrime );
 
-    void btnCubeRootClicked();
-    void btnRootPowClicked();
-    void btnPiClicked();
+    void btnPrimeFactorsClicked();
+    void btnPerfectClicked();
+    void btnSemiPerfectClicked();
 
-    void btnLog10Clicked();
-    void btnLog2Clicked();
-    void btn2PowClicked();
-
-    void btnCAreaClicked();
-    void btnCircClicked();
-    void btnRAreaClicked();
-    void btnPeriClicked();
-    void btnRatioClicked();
-    void btnVolCylClicked();
-    void btnVolCubeClicked();
-
+    void btnWeirdClicked();
+    void btnSublimeClicked();
+    void btnAbundantClicked();
+    void slotDataChanged();
 private:
-    void errorNumVals( int numValues ) const;
-    void errorInvalidValue( const QString & numValues ) const;
-    double getLastValue( bool popLast );
+    template< typename T >
+    T getLastValue( bool popLast );
     void addValue( char value );
-    void setLastValue( double value );
+    void addLastValue( double value );
+    void addLastValue( bool value );
+    void addLastValue( int64_t value );
+    void addLastValue( const QString & newValue );
+    std::pair< int64_t, std::list< int64_t > > getSumOfFactors( int64_t curr, bool properFactors ) const;
+    std::pair< bool, std::list< int64_t > > isAbundant( int64_t num ) const;
+    std::pair< bool, std::list< int64_t > > isSemiPerfect( int64_t num ) const;
+    std::pair< bool, std::list< int64_t > > isPerfect( int64_t num ) const;
 
-    Ui::CCalculator *ui;
+    std::list< int64_t > computeFactors( int64_t num ) const;
+    std::list< int64_t > computePrimeFactors( int64_t num ) const;
+    bool isSemiPerfect( const std::vector< int64_t >& numbers, size_t n, int64_t num ) const;
+
+    std::unique_ptr< Ui::CCalculator > fImpl;
     QStringListModel * fModel;
+
+    void initMaps();
+    using TBinaryOpFunc = std::function< double( double, double ) >;
+    std::unordered_map< char, TBinaryOpFunc > fOpMap;
+    std::unordered_map< QAbstractButton*, int32_t > fNumRowsPerFunctionMap;
+    using TKeyPressedFunction = std::function< void( void ) >;
+    std::unordered_map< int, TKeyPressedFunction > fKeyMap;
 };
 
 #endif // _ALCULATOR_H

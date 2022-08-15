@@ -1,312 +1,280 @@
+// The MIT License( MIT )
+//
+// Copyright( c ) 2020 Scott Aron Bloom
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this softwareand associated documentation files( the "Software" ), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and /or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions :
+//
+// The above copyright noticeand this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #include "Calculator.h"
+#include "utils.h"
+
 #include "ui_Calculator.h"
 
 #include <QStringListModel>
 #include <QKeyEvent>
 #include <QMessageBox>
-#include <QHeaderView>
-#include <QDebug>
-#include <cmath>
-#include <QApplication>
+#include <unordered_map>
 
-bool CCalculator::eventFilter(QObject *obj, QEvent *event)
+
+class CStringListModel : public QStringListModel
 {
-    if (obj == ui->values) 
+public:
+    CStringListModel( QObject* parent ) :
+        QStringListModel( parent )
     {
-        if (event->type() == QEvent::KeyPress) 
+    }
+
+    QVariant data( const QModelIndex& index, int role = Qt::DisplayRole ) const override
+    {
+        if ( role == Qt::TextAlignmentRole )
+            return static_cast<int>( Qt::AlignVCenter | Qt::AlignRight );
+        return QStringListModel::data( index, role );
+    }
+};
+
+CCalculator::CCalculator( QWidget* parent )
+    : QDialog( parent ),
+    fImpl( new Ui::CCalculator )
+{
+    fImpl->setupUi( this );
+    //setWindowFlags( windowFlags() & ~Qt::WindowContextHelpButtonHint );
+
+    fModel = new CStringListModel( this );
+    fImpl->values->setModel( fModel );
+    (void)connect( fModel, &QAbstractItemModel::dataChanged, this, [ this ]() { slotDataChanged(); } );
+    (void)connect( fModel, &QAbstractItemModel::modelReset, this, [ this ]() { slotDataChanged(); } );
+    (void)connect( fModel, &QAbstractItemModel::rowsInserted, this, [ this ]() { slotDataChanged(); } );
+    (void)connect( fModel, &QAbstractItemModel::rowsRemoved, this, [ this ]() { slotDataChanged(); } );
+    (void)connect( fModel, &QAbstractItemModel::rowsMoved, this, [ this ]() { slotDataChanged(); } );
+
+    (void)connect( fImpl->btn_0, &QToolButton::clicked, this, [this](){ addValue( '0' ); } );
+    (void)connect( fImpl->btn_1, &QToolButton::clicked, this, [this](){ addValue( '1' ); } );
+    (void)connect( fImpl->btn_2, &QToolButton::clicked, this, [this](){ addValue( '2' ); } );
+    (void)connect( fImpl->btn_3, &QToolButton::clicked, this, [this](){ addValue( '3' ); } );
+    (void)connect( fImpl->btn_4, &QToolButton::clicked, this, [this](){ addValue( '4' ); } );
+    (void)connect( fImpl->btn_5, &QToolButton::clicked, this, [this](){ addValue( '5' ); } );
+    (void)connect( fImpl->btn_6, &QToolButton::clicked, this, [this](){ addValue( '6' ); } );
+    (void)connect( fImpl->btn_7, &QToolButton::clicked, this, [this](){ addValue( '7' ); } );
+    (void)connect( fImpl->btn_8, &QToolButton::clicked, this, [this](){ addValue( '8' ); } );
+    (void)connect( fImpl->btn_9, &QToolButton::clicked, this, [this](){ addValue( '9' ); } );
+    (void)connect( fImpl->btn_period, &QToolButton::clicked, this, [ this ]() { addValue( '.' ); } );
+
+    (void)connect( fImpl->btn_enter, &QToolButton::clicked, this, &CCalculator::btnEnterClicked );
+    (void)connect( fImpl->btn_C, &QToolButton::clicked, this, &CCalculator::btnCClicked );
+    (void)connect( fImpl->btn_Del, &QToolButton::clicked, this, &CCalculator::btnDelClicked );
+    (void)connect( fImpl->btn_BS, &QToolButton::clicked, this, &CCalculator::btnBSClicked );
+
+    (void)connect( fImpl->btn_plus, &QToolButton::clicked, this, [this](){ binaryOperatorClicked( '+' ); } );
+    (void)connect( fImpl->btn_minus, &QToolButton::clicked, this, [ this ]() { binaryOperatorClicked( '-' ); } );
+    (void)connect( fImpl->btn_mult, &QToolButton::clicked, this, [ this ]() { binaryOperatorClicked( '*' ); } );
+    (void)connect( fImpl->btn_div, &QToolButton::clicked, this, [ this ]() { binaryOperatorClicked( '/' ); } );
+
+    (void)connect( fImpl->btn_Average, &QToolButton::clicked, this, &CCalculator::btnAverageClicked );
+    (void)connect( fImpl->btn_Narcissistic, &QToolButton::clicked, this, &CCalculator::btnNarcissisticClicked );
+    (void)connect( fImpl->btn_Factors, &QToolButton::clicked, this, [this](){ btnFactorsClicked( true ); } );
+    (void)connect( fImpl->btn_ProperFactors, &QToolButton::clicked, this, [ this ]() { btnFactorsClicked( false ); } );
+    (void)connect( fImpl->btn_PrimeFactors, &QToolButton::clicked, this, [ this ]() { btnPrimeFactorsClicked(); } );
+    (void)connect( fImpl->btn_Perfect, &QToolButton::clicked, this, [ this ]() { btnPerfectClicked(); } );
+    (void)connect( fImpl->btn_SemiPerfect, &QToolButton::clicked, this, [ this ]() { btnSemiPerfectClicked(); } );
+    
+    (void)connect( fImpl->btn_Abundant, &QToolButton::clicked, this, [ this ]() { btnAbundantClicked(); } );
+    (void)connect( fImpl->btn_Weird, &QToolButton::clicked, this, [ this ]() { btnWeirdClicked(); } );
+    (void)connect( fImpl->btn_Sublime, &QToolButton::clicked, this, [ this ]() { btnSublimeClicked(); } );
+
+
+    fImpl->values->installEventFilter( this );
+    setFocus( Qt::MouseFocusReason );
+    initMaps();
+    slotDataChanged();
+}
+
+void CCalculator::initMaps()
+{
+    fOpMap =
+    {
+          { '+', [ this ]( double lhs, double rhs ) { return lhs + rhs; } }
+         ,{ '-', [ this ]( double lhs, double rhs ) { return lhs - rhs; } }
+         ,{ '*', [ this ]( double lhs, double rhs ) { return lhs * rhs; } }
+         ,{ '/', [ this ]( double lhs, double rhs ) { return lhs / rhs; } }
+    };
+
+    fNumRowsPerFunctionMap =
+    {
+         { fImpl->btn_0, 0 }
+        ,{ fImpl->btn_1, 0 }
+        ,{ fImpl->btn_2, 0 }
+        ,{ fImpl->btn_3, 0 }
+        ,{ fImpl->btn_4, 0 }
+        ,{ fImpl->btn_5, 0 }
+        ,{ fImpl->btn_6, 0 }
+        ,{ fImpl->btn_7, 0 }
+        ,{ fImpl->btn_8, 0 }
+        ,{ fImpl->btn_9, 0 }
+        ,{ fImpl->btn_enter, 1 }
+        ,{ fImpl->btn_plus, 2 }
+        ,{ fImpl->btn_minus, 2 }
+        ,{ fImpl->btn_mult, 2 }
+        ,{ fImpl->btn_div, 2 }
+        ,{ fImpl->btn_C, 1 }
+        ,{ fImpl->btn_BS, 1 }
+        ,{ fImpl->btn_Del, 1 }
+        ,{ fImpl->btn_period, 0 }
+        ,{ fImpl->btn_Average, 1 }
+        ,{ fImpl->btn_Narcissistic, 1 }
+        ,{ fImpl->btn_Factors, 1 }
+        ,{ fImpl->btn_ProperFactors, 1 }
+        ,{ fImpl->btn_PrimeFactors, 1 }
+        ,{ fImpl->btn_Perfect, 1 }
+        ,{ fImpl->btn_SemiPerfect, 1 }
+        ,{ fImpl->btn_Abundant, 1 }
+        ,{ fImpl->btn_Weird, 1 }
+        ,{ fImpl->btn_Sublime, 1 }
+    };
+
+    fKeyMap =
+    {
+         { Qt::Key_0, [ this ]() { fImpl->btn_0->animateClick(); } }
+        ,{ Qt::Key_1, [ this ]() { fImpl->btn_1->animateClick(); } }
+        ,{ Qt::Key_2, [ this ]() { fImpl->btn_2->animateClick(); } }
+        ,{ Qt::Key_3, [ this ]() { fImpl->btn_3->animateClick(); } }
+        ,{ Qt::Key_4, [ this ]() { fImpl->btn_4->animateClick(); } }
+        ,{ Qt::Key_5, [ this ]() { fImpl->btn_5->animateClick(); } }
+        ,{ Qt::Key_6, [ this ]() { fImpl->btn_6->animateClick(); } }
+        ,{ Qt::Key_7, [ this ]() { fImpl->btn_7->animateClick(); } }
+        ,{ Qt::Key_8, [ this ]() { fImpl->btn_8->animateClick(); } }
+        ,{ Qt::Key_9, [ this ]() { fImpl->btn_9->animateClick(); } }
+        ,{ Qt::Key_Enter, [ this ]() { fImpl->btn_enter->animateClick(); } }
+        ,{ Qt::Key_Return, [ this ]() { fImpl->btn_enter->animateClick(); } }
+        ,{ Qt::Key_Plus, [ this ]() { fImpl->btn_plus->animateClick(); } }
+        ,{ Qt::Key_Minus, [ this ]() { fImpl->btn_minus->animateClick(); } }
+        ,{ Qt::Key_Asterisk, [ this ]() { fImpl->btn_mult->animateClick(); } }
+        ,{ Qt::Key_Slash, [ this ]() { fImpl->btn_div->animateClick(); } }
+        ,{ Qt::Key_Backspace, [ this ]() { fImpl->btn_BS->animateClick(); } }
+        ,{ Qt::Key_Delete, [ this ]() { fImpl->btn_Del->animateClick(); } }
+    };
+}
+bool CCalculator::eventFilter( QObject* obj, QEvent* event )
+{
+    if ( ( obj == fImpl->values ) || ( obj == this ) )
+    {
+        if ( event->type() == QEvent::KeyPress )
         {
-            QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+            QKeyEvent* keyEvent = static_cast<QKeyEvent*>( event );
             keyPressEvent( keyEvent );
             return true;
-        } 
-        else 
+        }
+        else
         {
             return false;
         }
-    } else 
+    }
+    else
     {
         // pass the event on to the parent class
-        return QDialog::eventFilter(obj, event);
+        return QDialog::eventFilter( obj, event );
     }
 }
 
-CCalculator::CCalculator(QWidget *parent)
-    : QDialog(parent)
+void CCalculator::slotDataChanged()
 {
-	ui = new Ui::CCalculator();
-	ui->setupUi(this);
-
-    fModel = new QStringListModel( this );
-    ui->values->setModel( fModel );
-
-    connect( ui->btn_0, SIGNAL( clicked() ), this, SLOT( btn0Clicked() ) );
-    connect( ui->btn_1, SIGNAL( clicked() ), this, SLOT( btn1Clicked() ) );
-    connect( ui->btn_2, SIGNAL( clicked() ), this, SLOT( btn2Clicked() ) );
-    connect( ui->btn_3, SIGNAL( clicked() ), this, SLOT( btn3Clicked() ) );
-    connect( ui->btn_4, SIGNAL( clicked() ), this, SLOT( btn4Clicked() ) );
-    connect( ui->btn_5, SIGNAL( clicked() ), this, SLOT( btn5Clicked() ) );
-    connect( ui->btn_6, SIGNAL( clicked() ), this, SLOT( btn6Clicked() ) );
-    connect( ui->btn_7, SIGNAL( clicked() ), this, SLOT( btn7Clicked() ) );
-    connect( ui->btn_8, SIGNAL( clicked() ), this, SLOT( btn8Clicked() ) );
-    connect( ui->btn_9, SIGNAL( clicked() ), this, SLOT( btn9Clicked() ) );
-    connect( ui->btn_enter, SIGNAL( clicked() ), this, SLOT( btnEnterClicked() ) );
-    connect( ui->btn_period, SIGNAL( clicked() ), this, SLOT( btnPeriodClicked() ) );
-    connect( ui->btn_plus, SIGNAL( clicked() ), this, SLOT( btnPlusClicked() ) );
-    connect( ui->btn_mod, SIGNAL( clicked() ), this, SLOT( btnModClicked() ) );
-
-    connect( ui->btnMinus, SIGNAL( clicked() ), this, SLOT( btnMinusClicked() ) );
-
-    connect( ui->btn_CA, SIGNAL( clicked() ), this, SLOT( btnCAClicked() ) );
-    connect( ui->btn_Average, SIGNAL( clicked() ), this, SLOT( btnAverageClicked() ) );
-
-    connect( ui->btn_mult, SIGNAL( clicked() ), this, SLOT( btnMultClicked() ) );
-    connect( ui->btn_div, SIGNAL( clicked() ), this, SLOT( btnDivClicked() ) );
-    connect( ui->btn_negate, SIGNAL( clicked() ), this, SLOT( btnNegateClicked() ) );
-
-    connect( ui->btn_sqrt, SIGNAL( clicked() ), this, SLOT( btnSqrtClicked() ) );
-    connect( ui->btn_square, SIGNAL( clicked() ), this, SLOT( btnSquareClicked() ) );
-    connect( ui->btn_quad, SIGNAL( clicked() ), this, SLOT( btnQuadClicked() ) );
-
-    connect( ui->btn_pow, SIGNAL( clicked() ), this, SLOT( btnPowClicked() ) );
-    connect( ui->btn_cubed, SIGNAL( clicked() ), this, SLOT( btnCubedClicked() ) );
-    connect( ui->btn_tenpow, SIGNAL( clicked() ), this, SLOT( btnTenPowClicked() ) );
-    connect( ui->btn_fact, SIGNAL( clicked() ), this, SLOT( btnFactClicked() ) );
-    connect( ui->btn_cuberoot, SIGNAL( clicked() ), this, SLOT( btnCubeRootClicked() ) );
-    connect( ui->btn_rootpow, SIGNAL( clicked() ), this, SLOT( btnRootPowClicked() ) );
-    connect( ui->btn_pi, SIGNAL( clicked() ), this, SLOT( btnPiClicked() ) );
-
-    connect( ui->btn_log10, SIGNAL( clicked() ), this, SLOT( btnLog10Clicked() ) );
-    connect( ui->btn_log2, SIGNAL( clicked() ), this, SLOT( btnLog2Clicked() ) );
-    connect( ui->btn_2pow, SIGNAL( clicked() ), this, SLOT( btn2PowClicked() ) );
-    
-    connect( ui->btn_carea, SIGNAL( clicked() ), this, SLOT( btnCAreaClicked() ) );
-    connect( ui->btn_circ, SIGNAL( clicked() ), this, SLOT( btnCircClicked() ) );
-
-    connect( ui->btn_rarea, SIGNAL( clicked() ), this, SLOT( btnRAreaClicked() ) );
-    connect( ui->btn_peri, SIGNAL( clicked() ), this, SLOT( btnPeriClicked() ) );
-    connect( ui->btn_ratio, SIGNAL( clicked() ), this, SLOT( btnRatioClicked() ) );
-
-    connect( ui->btn_vcyl, SIGNAL( clicked() ), this, SLOT( btnVolCylClicked() ) );
-    connect( ui->btn_volcube, SIGNAL( clicked() ), this, SLOT( btnVolCubeClicked() ) );
-
-    ui->values->installEventFilter( this );
-    setFocus( Qt::MouseFocusReason );
-}
-
-void CCalculator::keyPressEvent( QKeyEvent * event )
-{
-    Qt::KeyboardModifiers mods = QApplication::keyboardModifiers();
-
-    switch (event->key()) 
+    auto numRows = fModel->rowCount();
+    for( auto && ii : fNumRowsPerFunctionMap )
     {
-    case Qt::Key_Period:
-        ui->btn_period->animateClick();
-        break;
-    case Qt::Key_0:
-        ui->btn_0->animateClick();
-        break;
-    case Qt::Key_1:
-        ui->btn_1->animateClick();
-        break;
-    case Qt::Key_2:
-        ui->btn_2->animateClick();
-        break;
-    case Qt::Key_3:
-        ui->btn_3->animateClick();
-        break;
-    case Qt::Key_4:
-        ui->btn_4->animateClick();
-        break;
-    case Qt::Key_5:
-        ui->btn_5->animateClick();
-        break;
-    case Qt::Key_6:
-        ui->btn_6->animateClick();
-        break;
-    case Qt::Key_7:
-        ui->btn_7->animateClick();
-        break;
-    case Qt::Key_8:
-        ui->btn_8->animateClick();
-        break;
-    case Qt::Key_9:
-        ui->btn_9->animateClick();
-        break;
-    case Qt::Key_Enter:
-    case Qt::Key_Return:
-        ui->btn_enter->animateClick();
-        break;
-
-    case Qt::Key_Backspace:
-        btnBSClicked();  
-        break;
-    case Qt::Key_Delete:
-        btnDeleteClicked();  
-        break;
-    case Qt::Key_Plus:
-        ui->btn_plus->animateClick();
-        break;
-    case Qt::Key_Percent:
-        ui->btn_mod->animateClick();
-        break;
-    case Qt::Key_Minus:
-        ui->btnMinus->animateClick();
-        break;
-    case Qt::Key_Slash:
-        ui->btn_div->animateClick();
-        break;
-    case Qt::Key_Asterisk:
-        ui->btn_mult->animateClick();
-        break;
-    case Qt::Key_AsciiCircum:
-        ui->btn_pow->animateClick();
-        break;
-    case Qt::Key_Exclam:
-        ui->btn_fact->animateClick();
-        break;
-    case Qt::Key_A:
-        if ( ( mods & Qt::ShiftModifier ) != 0 )
-        {
-            ui->btn_carea->animateClick();
-        }
-        else
-            ui->btn_rarea->animateClick();
-
-        break;
-    case Qt::Key_C:
-        ui->btn_circ->animateClick();
-        break;
-    case Qt::Key_P:
-        ui->btn_peri->animateClick();
-        break;
-    default:
-        qDebug() << event->key();
-        QDialog::keyPressEvent(event);
+        ii.first->setEnabled( numRows >= ii.second );
     }
+}
+
+void CCalculator::keyPressEvent( QKeyEvent* event )
+{
+    auto pos = fKeyMap.find( event->key() );
+    if ( pos != fKeyMap.end() )
+    {
+        ((*pos).second)();
+        return;
+    }
+    QDialog::keyPressEvent( event );
 }
 
 CCalculator::~CCalculator()
 {
-	delete ui;
 }
 
-void CCalculator::btn0Clicked()
+int CCalculator::numValues() const
 {
-    addValue( '0' );
+    return fModel->rowCount();
 }
 
-void CCalculator::btn1Clicked()
+template< typename T1 >
+auto toNum( const QVariant& string, bool* aOK )
+-> typename std::enable_if< std::is_floating_point< T1 >::value, T1 >::type
 {
-    addValue( '1' );
+    return string.toDouble( aOK );
 }
 
-void CCalculator::btn2Clicked()
+template< typename T1 >
+auto toNum( const QVariant& string, bool * aOK )
+-> typename std::enable_if< std::is_integral< T1 >::value, T1 >::type
 {
-    addValue( '2' );
+    return string.toLongLong( aOK );
 }
 
-void CCalculator::btn3Clicked()
-{
-    addValue( '3' );
-}
-
-void CCalculator::btn4Clicked()
-{
-    addValue( '4' );
-}
-
-void CCalculator::btn5Clicked()
-{
-    addValue( '5' );
-}
-
-void CCalculator::btn6Clicked()
-{
-    addValue( '6' );
-}
-
-void CCalculator::btn7Clicked()
-{
-    addValue( '7' );
-}
-
-void CCalculator::btn8Clicked()
-{
-    addValue( '8' );
-}
-
-void CCalculator::btn9Clicked()
-{
-    addValue( '9' );
-}
-
-void CCalculator::btnPeriodClicked()
-{
-    addValue( '.' );
-}
-
-double CCalculator::getLastValue( bool popLast )
+template< typename T >
+T CCalculator::getLastValue( bool popLast )
 {
     if ( fModel->rowCount() == 0 )
         return 0.0;
 
     QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
-    if ( mi.data().toString().isEmpty() )
+    auto lastValue = mi.data();
+    if ( lastValue.toString().isEmpty() )
     {
         if ( !popLast )
             return 0.0;
-        fModel->removeRows( fModel->rowCount()-1, 1 );
+        fModel->removeRows( fModel->rowCount() - 1, 1 );
         mi = fModel->index( fModel->rowCount() - 1 );
     }
 
     bool aOK = false;
-    double currValue = mi.data().toDouble( &aOK );
+    T currValue;
+    if ( lastValue.toString().toLower() == "nan" )
+    {
+        currValue = std::numeric_limits< T >::quiet_NaN();
+        aOK = true;
+    }
+    else if ( lastValue.toString().toLower() == "inf" )
+    {
+        currValue = std::numeric_limits< T >::infinity();
+        aOK = true;
+    }
+    else
+        currValue = toNum< T >( lastValue, &aOK );
+
+    if ( popLast )
+        fModel->removeRows( fModel->rowCount() - 1, 1 );
+
     if ( !aOK )
     {
-        if ( popLast )
-            fModel->removeRows( fModel->rowCount()-1, 1 );
         return 0.0;
     }
 
-    if ( popLast )
-        fModel->removeRows( fModel->rowCount()-1, 1 );
     return currValue;
 }
 
-void CCalculator::btnEnterClicked()
-{
-    if ( numValues() == 0 )
-        return;
-
-    QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
-    QString currValue = fModel->data( mi, Qt::EditRole ).toString();
-    if ( currValue.isEmpty() )
-        return;
-
-    fModel->insertRows( fModel->rowCount(), 1 );
-}
-
-void CCalculator::btnDeleteClicked()
-{
-    if ( numValues() == 0 )
-        return;
-
-    QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
-    fModel->setData( mi, "" ); 
-}
-
-void CCalculator::btnBSClicked()
-{
-    if ( numValues() == 0 )
-        return;
-
-    QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
-    QString currValue = fModel->data( mi, Qt::EditRole ).toString();
-    if ( currValue.isEmpty() )
-        return;
-    currValue = currValue.left( currValue.length() - 1 );
-    fModel->setData( mi , currValue );
-}
 
 void CCalculator::addValue( char value )
 {
@@ -323,484 +291,297 @@ void CCalculator::addValue( char value )
         mi = fModel->index( 0, 0 );
     }
     currValue += value;
-    fModel->setData( mi, currValue ); 
+    fModel->setData( mi, currValue );
 }
 
-void CCalculator::setLastValue( double value )
+void CCalculator::addLastValue( double value )
 {
-    QString newValue = QString::number( value );
+    addLastValue( QString::number( value ) );
+}
+
+void CCalculator::addLastValue( int64_t value )
+{
+    addLastValue( QString::number( value ) );
+}
+
+void CCalculator::addLastValue( bool value )
+{
+    addLastValue( value ? tr( "Yes" ) : tr( "No" ) );
+}
+
+void CCalculator::addLastValue( const QString& newValue )
+{
     fModel->insertRows( fModel->rowCount(), 1 );
     QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
     fModel->setData( mi, newValue );
 }
 
-int CCalculator::numValues() const
+std::pair< int64_t, std::list< int64_t > > CCalculator::getSumOfFactors( int64_t curr, bool properFactors ) const
 {
-    return fModel->rowCount();
+    auto factors = computeFactors( curr );
+    if ( properFactors && !factors.empty() )
+        factors.pop_back();
+    int64_t sum = 0;
+    for ( auto ii : factors )
+        sum += ii;
+    return std::make_pair( sum, factors );
 }
 
-void CCalculator::errorNumVals( int numValues ) const
+void CCalculator::btnEnterClicked()
 {
-    QMessageBox::critical( NULL, QString( "Input error" ), QString( "This function requires %1 values" ).arg( numValues ) );
-}
-
-void CCalculator::errorInvalidValue( const QString & msg ) const
-{
-    QMessageBox::critical( NULL, QString( "Input error" ), msg );
-}
-
-void CCalculator::btnModClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
+    if ( fModel->rowCount() == 0 )
         return;
-    }
 
-    int val2 = getLastValue( true );
-    int val1 = getLastValue( true );
-    double newValue = val1 % val2;
-    setLastValue( newValue );
+    QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
+    QString currValue = fModel->data( mi, Qt::EditRole ).toString();
+    if ( currValue.isEmpty() )
+        return;
+
+    fModel->insertRows( fModel->rowCount(), 1 );
 }
 
-void CCalculator::btnPlusClicked()
+void CCalculator::btnDelClicked()
 {
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
+    if ( numValues() == 0 )
         return;
-    }
 
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-    double newValue = val1 + val2;
-    setLastValue( newValue );
+    fModel->removeRows( fModel->rowCount() - 1, 1 );
 }
 
-void CCalculator::btnMinusClicked ()
+void CCalculator::btnBSClicked()
 {
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
+    if ( numValues() == 0 )
         return;
-    }
-    double val2 = getLastValue( true ) ;
-    double val1 = getLastValue ( true ) ;
-    double newValue = val1 - val2 ;
-    setLastValue (newValue) ;
+
+    QModelIndex mi = fModel->index( fModel->rowCount() - 1 );
+    QString currValue = fModel->data( mi, Qt::EditRole ).toString();
+    if ( currValue.isEmpty() )
+        return;
+    currValue = currValue.left( currValue.length() - 1 );
+    fModel->setData( mi, currValue );
 }
 
-void CCalculator::btnMultClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
-        return;
-    }
-    double val2 = getLastValue( true ) ;
-    double val1 = getLastValue ( true ) ;
-    double newValue = val1 * val2 ;
-    setLastValue( newValue );
-}
-
-void CCalculator::btnDivClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
-        return;
-    }
-    double denom = getLastValue( false );
-    if ( denom == 0.0 )
-    {
-        errorInvalidValue( "The denominator can not be zero" );
-        return;
-    }
-    getLastValue(true);
-    double numer = getLastValue(true);
-    double newValue = numer/denom;
-    setLastValue(newValue);
-
-}
-
-void CCalculator::btnCAClicked()
+void CCalculator::btnCClicked() // clear all
 {
     fModel->setStringList( QStringList() );
+}
+
+void CCalculator::binaryOperatorClicked( char op )
+{
+    if ( fModel->rowCount() < 2 )
+        return;
+
+    auto val2 = getLastValue< double >( true );
+    auto val1 = getLastValue< double >( true );
+
+    auto pos = fOpMap.find( op );
+    if ( pos == fOpMap.end() )
+        return;
+    auto newValue = (*pos).second( val1, val2 );
+    addLastValue( newValue );
+}
+
+void CCalculator::reportPrime( std::list<int64_t>& factors, int64_t curr, bool incNum, int numShowPrime )
+{
+    if ( factors.size() == numShowPrime )
+    {
+        addLastValue( tr( "%1 is a prime number" ).arg( curr ) );
+        return;
+    }
+    if ( !incNum )
+        factors.pop_back();
+    for ( auto&& ii : factors )
+        addLastValue( ii );
 }
 
 void CCalculator::btnAverageClicked()
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
 
-    int num= 0;
+    int num = 0;
     double total = 0;
-    while ( numValues() > 0)
+    while ( numValues() > 0 )
     {
         num = num + 1;
-        double curr = getLastValue ( true);
+        auto curr = getLastValue< double >( true );
         total += curr;
     }
     double newValue = total / num;
-    setLastValue ( newValue);
+    addLastValue( newValue );
 }
 
-void CCalculator::btnNegateClicked()
+void CCalculator::btnNarcissisticClicked()
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
 
-    double val = getLastValue(true);
-    double newVal = -1.0*val;
-    
-    setLastValue( newVal );
+    auto curr = getLastValue< int64_t >( false );
+
+    bool aOK;
+    bool isNarc = NUtils::isNarcissistic( curr, 10, aOK );
+    if ( aOK )
+    {
+        addLastValue( isNarc );
+    }
 }
 
-void CCalculator::btnSqrtClicked()
+std::list< int64_t > CCalculator::computeFactors( int64_t num ) const
 {
-    if ( numValues() < 1 )
+    std::list< int64_t > retVal;
+    std::list< int64_t > retVal2;
+    retVal.push_back( 1 );
+    retVal2.push_back( num );
+
+    // only need to go to half way point
+    auto lastNum = ( num / 2 ) + ( ( ( num % 2 ) == 0 ) ? 0 : 1 );
+    for( int64_t ii = 2; ii < lastNum; ++ii )
     {
-        errorNumVals( 1 );
-        return;
+        if ( ( num % ii ) == 0 )
+        {
+            retVal.push_back( ii );
+            auto other = num / ii;
+            lastNum = std::min( lastNum, other );
+            retVal2.push_front( other );
+        }
     }
 
-    double val = getLastValue(true);
-    double newVal = sqrt( val );
-    
-    setLastValue( newVal );
-}
-
-void CCalculator::btnSquareClicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-
-    double val = getLastValue(true);
-    double newVal = val*val ;
-    
-    setLastValue( newVal );
-}
-
-void CCalculator::btnQuadClicked()
-{
-    if ( numValues() < 3 )
-    {
-        errorNumVals( 3 );
-        return;
-    }
-
-    double valC = getLastValue(true);
-    double valB = getLastValue(true);
-    double valA = getLastValue(true);
-
-    if ( valA == 0)
-    {
-        errorInvalidValue( "Value A cannot be Zero" );
-        return;
-    }
-
-    double inner = ( valB * valB ) - 4*valA*valC;
-    if ( inner < 0 )
-    {
-        errorInvalidValue( "B^2 - 4*A*C must be greater than or equal to 0" );
-        return;
-    }
-    double root = sqrt ( inner );
-    double newVal1 = ( -valB - root ) / 2* valA;
-    double newVal2 = ( -valB + root ) / 2* valA;
-    
-    setLastValue( newVal1 );
-    setLastValue( newVal2 );
-}
-
-void CCalculator::btnPowClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
-        return;
-    }
-
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-
-    double newValue = pow( val1, val2 );
-   
-    setLastValue(newValue);
-}
-
-
-void CCalculator::btnCubedClicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-
-    double val1 = getLastValue( true );
-    double newValue = pow( val1, 3 );
-   
-    setLastValue(newValue);
-}
-
-void CCalculator::btnTenPowClicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-
-    double val1 = getLastValue( true );
-    double newValue = pow( 10, val1 );
-   
-    setLastValue(newValue);
-}
-
-void CCalculator::btnFactClicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-
-    double val1 = getLastValue( true );
-    if( val1 <0)
-    {
-        errorInvalidValue( "value >0");
-        return;
-    }
-    int decVal = floor( val1 );
-    int retVal=1;
-    while ( decVal > 0 )
-    {
-        retVal = retVal * decVal;
-        decVal = decVal - 1;
-    }
-
-    setLastValue( retVal );
-}
-
-void CCalculator::btnCubeRootClicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-    double val1 = getLastValue( true );
-    double newValue = pow( val1, 1.0/3.0 );
-   
-    setLastValue(newValue);
-}
-
-void CCalculator::btnRootPowClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
-        return;
-    }
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-
-    double newValue = pow( val1, (1/val2) );
-   
-    setLastValue(newValue);
-}
-
-#define PI 3.1415926535897
-
-void CCalculator::btnPiClicked()
-{
-    setLastValue( PI );
-}
-
-void CCalculator::btnLog10Clicked()
-{
-    if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
-        return;
-    }
-
-    double val = getLastValue( true );
-
-    double newVal = log10( val );
-
-    setLastValue( newVal );
-}
-
-double log2( double n )  
-{ 
-    double retVal = log( n );
-    retVal = retVal / log( 2.0 );
+    if ( *retVal.rbegin() == *retVal2.begin() )
+        retVal2.pop_front();
+    retVal.insert( retVal.end(), retVal2.begin(), retVal2.end() );
+    retVal.sort();
     return retVal;
 }
 
-void CCalculator::btnLog2Clicked()
+
+std::list< int64_t > CCalculator::computePrimeFactors( int64_t num ) const
+{
+    std::list< int64_t > retVal;
+
+    while( ( num % 2 ) == 0 )
+    {
+        retVal.push_back( 2 );
+        num = num / 2 ;
+    }
+
+    int64_t lastNum = std::sqrt( num );
+
+    for( int64_t ii = 3; ii < lastNum; ii = ii + 2 )
+    {
+        while( ( num % ii )  == 0 )
+        {
+            retVal.push_back( ii );
+            num = num / ii;
+        }
+    }
+    if ( num > 2 )
+        retVal.push_back( num );
+    return retVal;
+}
+
+bool CCalculator::isSemiPerfect( const std::vector< int64_t >& factors, size_t n, int64_t num ) const
+{
+    if ( num == 0 )
+        return true;
+    if ( n == 0 && num != 0 )
+        return false;
+
+    if ( factors[ n - 1 ] > num )
+        return isSemiPerfect( factors, n - 1, num );
+    return isSemiPerfect( factors, n - 1, num ) 
+        || isSemiPerfect( factors, n - 1, num - factors[ n - 1 ] );
+}
+
+std::pair< bool, std::list< int64_t > > CCalculator::isPerfect( int64_t num ) const
+{
+    auto sum = getSumOfFactors( num, true );
+    return std::make_pair( sum.first == num, sum.second );
+}
+
+std::pair< bool, std::list< int64_t > > CCalculator::isSemiPerfect( int64_t num ) const
+{
+    auto sum = getSumOfFactors( num, true );
+    auto factors = std::vector< int64_t >( { sum.second.begin(), sum.second.end() } );
+    auto isSemiPerfect = this->isSemiPerfect( factors, factors.size(), num );
+    return std::make_pair( isSemiPerfect, sum.second );
+}
+
+std::pair< bool, std::list< int64_t > > CCalculator::isAbundant( int64_t num ) const
+{
+    auto sum = getSumOfFactors( num, true );
+    return std::make_pair( sum.first > num, sum.second );
+}
+
+
+void CCalculator::btnFactorsClicked( bool incNum )
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
+    auto curr = getLastValue< int64_t >( false );
+    auto factors = computeFactors( curr );
 
-    double val = getLastValue( true );
-
-    double newVal = log2( val );
-
-    setLastValue( newVal );
+    reportPrime( factors, curr, incNum, 2 );
 }
 
-void CCalculator::btn2PowClicked()
+void CCalculator::btnPrimeFactorsClicked()
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
+    auto curr = getLastValue< int64_t >( false );
+    auto factors = computePrimeFactors( curr );
 
-    double val = getLastValue( true );
-
-    double newVal = pow( 2.0, val );
-
-    setLastValue( newVal );
+    reportPrime( factors, curr, true, 1 );
 }
 
-
-
-void CCalculator::btnCAreaClicked()
+void CCalculator::btnPerfectClicked()
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
+    auto curr = getLastValue< int64_t >( false );
 
-    double val = getLastValue( true );
-
-    double newVal = PI*val*val;
-        
-    setLastValue( newVal );
+    addLastValue( isPerfect( curr ).first );
 }
 
-void CCalculator::btnCircClicked()
+void CCalculator::btnSemiPerfectClicked()
 {
     if ( numValues() < 1 )
-    {
-        errorNumVals( 1 );
         return;
-    }
-
-    double val = getLastValue( true );
-
-    double newVal = 2*PI*val;
-        
-    setLastValue( newVal );
+    auto curr = getLastValue< int64_t >( false );
+    addLastValue( isSemiPerfect( curr ).first );
 }
 
-void CCalculator::btnRAreaClicked()
+void CCalculator::btnAbundantClicked()
 {
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
+    if ( numValues() < 1 )
         return;
-    }
-
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-
-    double newVal = val1*val2;
-        
-    setLastValue( newVal );
+    auto curr = getLastValue< int64_t >( false );
+    addLastValue( isAbundant( curr ).first );
 }
 
-void CCalculator::btnPeriClicked()
+void CCalculator::btnWeirdClicked()
 {
-    if ( numValues() < 2 )
+    if ( numValues() < 1 )
+        return;
+    auto curr = getLastValue< int64_t >( false );
+    auto isAbundant = this->isAbundant( curr );
+    if ( !isAbundant.first )
     {
-        errorNumVals( 2 );
+        addLastValue( false );
         return;
     }
 
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-
-    double newVal = val1+val1+val2+val2;
-        
-    setLastValue( newVal );
+    std::vector< int64_t > factors( { isAbundant.second.begin(), isAbundant.second.end() } );
+    addLastValue( !isSemiPerfect( factors, factors.size(), curr ) );
 }
 
-void CCalculator::btnRatioClicked()
+void CCalculator::btnSublimeClicked()
 {
-    if ( numValues() < 3 )
-    {
-        errorNumVals( 3 );
+    if ( numValues() < 1 )
         return;
-    }
+    auto curr = getLastValue< int64_t >( false );
+    auto sumOfFactors = getSumOfFactors( curr, false );
 
-    double val3 = getLastValue( true );
-    double val2 = getLastValue( true );
-    double val1 = getLastValue( true );
-
-    if ( val3 == 0 )
-    {
-        errorInvalidValue( "val3 cannot be 0" );
-        return;
-    }
-
-    if ( val2 == 0 )
-    {
-        errorInvalidValue( "val2 cannot be 0" );
-        return;
-    }
-
-    double newVal = val1*val3/val2;
-        
-    setLastValue( newVal );
-}
-
-void CCalculator::btnVolCylClicked()
-{
-    if ( numValues() < 2 )
-    {
-        errorNumVals( 2 );
-        return;
-    }
-
-    double height = getLastValue( true );
-    double radius = getLastValue( true );
-
-    double newVal = PI*radius*radius*height;
-        
-    setLastValue( newVal );
-}
-
-void CCalculator::btnVolCubeClicked()
-{
-    if ( numValues() < 3 )
-    {
-        errorNumVals( 3 );
-        return;
-    }
-
-    double height = getLastValue(true);
-    double width = getLastValue(true);
-    double base = getLastValue(true);
-
-    double newVal = base*height*width;
-        
-    setLastValue( newVal );
+    auto isNumFactorsPerfect = isPerfect( sumOfFactors.second.size() ).first;
+    auto isSumPerfect = isPerfect( sumOfFactors.first ).first;
+    addLastValue( isNumFactorsPerfect && isSumPerfect );
 }
